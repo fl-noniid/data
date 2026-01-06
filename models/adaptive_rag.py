@@ -1,11 +1,11 @@
 """
-Advanced Adaptive RAG with IR-CoT and Detailed Metrics
+Advanced Adaptive RAG with Improved IR-CoT Prompting
 """
 import time
 import random
 from typing import Dict, Any, List, Optional, Tuple
 from enum import Enum
-from langchain.schema import Document
+from langchain_core.documents import Document
 
 from utils.vllm_client import vLLMClient
 from utils.rag_components import DenseRetriever, format_context
@@ -39,7 +39,7 @@ class AdvancedAdaptiveRAG:
 
     def no_retrieval_pipeline(self, query: str) -> Dict[str, Any]:
         """Direct generation without retrieval"""
-        prompt = f"Question: {query}\nAnswer:"
+        prompt = f"Question: {query}\nAnswer (provide only the answer):"
         
         answer, llm_latency = self._llm_call(prompt)
         
@@ -55,12 +55,10 @@ class AdvancedAdaptiveRAG:
 
     def single_step_pipeline(self, query: str) -> Dict[str, Any]:
         """Single-step retrieval RAG"""
-        # Retrieval
         docs, retrieval_latency = self.retriever.retrieve(query)
         context = format_context(docs)
         
-        # Generation
-        prompt = f"Context:\n{context}\n\nQuestion: {query}\nAnswer:"
+        prompt = f"Context:\n{context}\n\nQuestion: {query}\nAnswer (provide only the answer based on context):"
         answer, llm_latency = self._llm_call(prompt)
         
         return {
@@ -74,7 +72,7 @@ class AdvancedAdaptiveRAG:
         }
 
     def multi_step_pipeline(self, query: str) -> Dict[str, Any]:
-        """Multi-step RAG using IR-CoT (Interleaving Retrieval and Chain-of-Thought)"""
+        """Multi-step RAG using IR-CoT with improved prompting to ensure multi-step execution"""
         total_llm_latency = 0.0
         total_retrieval_latency = 0.0
         llm_calls = 0
@@ -82,22 +80,40 @@ class AdvancedAdaptiveRAG:
         current_reasoning = ""
         
         for step in range(self.max_steps):
-            # 1. Retrieval based on query and current reasoning
+            # 1. Retrieval
             search_query = f"{query} {current_reasoning}".strip()
             docs, r_lat = self.retriever.retrieve(search_query, k=2)
             total_retrieval_latency += r_lat
             all_docs.extend(docs)
             
-            # 2. IR-CoT Step: Generate next reasoning step or final answer
+            # 2. IR-CoT Step
             context = format_context(all_docs)
-            prompt = f"""Context:
+            
+            # Improved prompt to encourage multi-step reasoning unless it's the last step
+            if step < self.max_steps - 1:
+                prompt = f"""Context:
 {context}
 
 Question: {query}
 Reasoning so far: {current_reasoning}
 
-Based on the context, provide the next step of reasoning to answer the question. If you have enough information, provide the final answer starting with 'Final Answer:'.
-"""
+Instructions:
+1. Analyze the context to find information relevant to the question.
+2. If you need more information to answer fully, provide a 'Thought:' explaining what's missing and what to look for next.
+3. DO NOT provide the final answer yet unless you are absolutely certain you have all multi-hop connections.
+4. If you have all information, start with 'Final Answer:'.
+
+Response:"""
+            else:
+                prompt = f"""Context:
+{context}
+
+Question: {query}
+Reasoning so far: {current_reasoning}
+
+Instructions: Provide the final answer to the question based on the context. Provide ONLY the answer.
+Final Answer:"""
+
             step_output, l_lat = self._llm_call(prompt)
             total_llm_latency += l_lat
             llm_calls += 1
@@ -106,9 +122,11 @@ Based on the context, provide the next step of reasoning to answer the question.
                 answer = step_output.split("Final Answer:")[-1].strip()
                 break
             else:
-                current_reasoning += " " + step_output
-                answer = step_output # Fallback if max steps reached
-        
+                # Extract thought or just append the output
+                thought = step_output.replace("Thought:", "").strip()
+                current_reasoning += f" Step {step+1}: {thought}"
+                answer = thought # Fallback
+
         return {
             "strategy": RAGStrategy.MULTI_STEP.value,
             "answer": answer,
@@ -120,7 +138,7 @@ Based on the context, provide the next step of reasoning to answer the question.
         }
 
     def run(self, query: str, dataset_type: str) -> Dict[str, Any]:
-        """Route query based on dataset type and run appropriate pipeline"""
+        """Route query based on dataset type"""
         start_time = time.time()
         
         if dataset_type == "no-retrieval":
@@ -130,15 +148,7 @@ Based on the context, provide the next step of reasoning to answer the question.
         elif dataset_type == "multi-step":
             result = self.multi_step_pipeline(query)
         else:
-            # Random fallback if type is unknown
-            strategy = random.choice(list(RAGStrategy))
-            if strategy == RAGStrategy.NO_RETRIEVAL:
-                result = self.no_retrieval_pipeline(query)
-            elif strategy == RAGStrategy.SINGLE_STEP:
-                result = self.single_step_pipeline(query)
-            else:
-                result = self.multi_step_pipeline(query)
+            result = self.no_retrieval_pipeline(query)
         
-        # Ensure total_latency is measured from the very start of the run call
         result["end_to_end_latency"] = time.time() - start_time
         return result
