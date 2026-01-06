@@ -1,9 +1,9 @@
 """
-Advanced RAG Components: Dense Retrieval and Vector Store
+Updated RAG Components with latest LangChain structure
 """
-from langchain.vectorstores import FAISS
-from langchain.embeddings import HuggingFaceEmbeddings
-from langchain.schema import Document
+from langchain_community.vectorstores import FAISS
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_core.documents import Document
 from typing import List, Dict, Any, Tuple
 import time
 
@@ -16,6 +16,7 @@ class DenseRetriever:
         embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2",
         top_k: int = 3
     ):
+        # Using latest langchain-huggingface package
         self.embeddings = HuggingFaceEmbeddings(
             model_name=embedding_model,
             model_kwargs={'device': 'cpu'}
@@ -25,6 +26,10 @@ class DenseRetriever:
         
     def build_global_index(self, corpus: List[str]):
         """Build a global index from a list of strings"""
+        if not corpus:
+            print("Warning: Empty corpus provided. Skipping index build.")
+            return
+            
         print(f"Building global index with {len(corpus)} documents...")
         start_time = time.time()
         
@@ -35,14 +40,9 @@ class DenseRetriever:
         print(f"Index built in {end_time - start_time:.2f} seconds")
         
     def retrieve(self, query: str, k: int = None) -> Tuple[List[Document], float]:
-        """
-        Retrieve documents and return latency
-        
-        Returns:
-            Tuple of (List of Documents, latency in seconds)
-        """
+        """Retrieve documents and return latency"""
         if self.vector_store is None:
-            raise ValueError("Vector store not initialized.")
+            return [], 0.0
             
         k = k or self.top_k
         start_time = time.time()

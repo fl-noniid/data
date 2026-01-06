@@ -1,13 +1,13 @@
 """
-Utility modules for Adaptive RAG
+Utility modules for Advanced Adaptive RAG
 """
 from .vllm_client import vLLMClient
-from .data_loader import HotpotQALoader
-from .rag_components import RAGRetriever, format_retrieved_context
+from .data_loader import AdvancedDataLoader
+from .rag_components import DenseRetriever, format_context
 
 __all__ = [
     'vLLMClient',
-    'HotpotQALoader',
-    'RAGRetriever',
-    'format_retrieved_context'
+    'AdvancedDataLoader',
+    'DenseRetriever',
+    'format_context'
 ]

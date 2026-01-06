@@ -1,13 +1,6 @@
 """
-Utility modules for Advanced Adaptive RAG
+Advanced Adaptive RAG models
 """
-from .vllm_client import vLLMClient
-from .data_loader import AdvancedDataLoader
-from .rag_components import DenseRetriever, format_context
+from .adaptive_rag import AdvancedAdaptiveRAG, RAGStrategy
 
-__all__ = [
-    'vLLMClient',
-    'AdvancedDataLoader',
-    'DenseRetriever',
-    'format_context'
-]
+__all__ = ['AdvancedAdaptiveRAG', 'RAGStrategy']
